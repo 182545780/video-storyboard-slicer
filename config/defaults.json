@@ -1,0 +1,11 @@
+{
+  "whisper": {
+    "command": "whisper",
+    "model": "small",
+    "language": "en",
+    "device": "auto",
+    "fp16": "auto",
+    "initial_prompt": null,
+    "threads": null
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Storyboard Slicer"
+  short_description: "Video context and focused frames"
+  default_prompt: "Use $video-storyboard-slicer to read this video, transcribe it with configured local Whisper, extract focused frames, and create an HTML summary page."

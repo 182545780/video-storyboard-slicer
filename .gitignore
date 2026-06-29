@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+venv/
+env/
+
+# Generated video workflow outputs
+source/
+metadata/
+storyboard/
+focused_frames/
+transcript/
+video-context/
+*-context/
+*-storyboard/
+summary_context.json
+ai_html_prompt.md
+moment_selection_prompt.md
+candidate_moments.json
+analysis_prompt.md
+
+# Large local media generated while working
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.m4v
+*.flv
+*.wav
+*.mp3
+

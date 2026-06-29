@@ -1,0 +1,4 @@
+Pillow>=10.0
+yt-dlp>=2025.1.0
+openai-whisper>=20250625
+

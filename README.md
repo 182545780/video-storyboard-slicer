@@ -21,7 +21,8 @@
 - 将截图按时间顺序排成 storyboard sheet，让 AI 先粗略理解全片画面流动。
 - 根据转录文案挑选可能有价值的时间段，再对这些区域做第二轮高密度拼图。
 - 生成 `summary.html` 草稿，并提示 AI 改成公众号文章式排版。
-- 最后用 `package_summary.py` 清理工程文件，只留下 `summary.html`、`assets/` 和可选长图。
+- 用 `check_article_html.py` 拦截工程报告味的 HTML，避免把 dry summary 当成最终页面交付。
+- 最后用 `package_summary.py` 清理工程文件，只留下 `summary.html`、`assets/` 和可选长图；打包时会再次检查文章质量。
 
 ## 环境要求
 
@@ -121,6 +122,12 @@ python3 scripts/extract_moment_frames.py ./video-context/summary_context.json ./
 
 工作流会生成 `summary.html` 和 `ai_html_prompt.md`。先把 `summary.html` 改成面向读者的完整文章页，再执行清理。
 
+先检查它是不是还像工程总结：
+
+```bash
+python3 scripts/check_article_html.py ./video-context/summary.html
+```
+
 先 dry-run 查看会保留和删除哪些文件：
 
 ```bash
@@ -163,4 +170,5 @@ python3 scripts/prepare_video_context.py ./input.mp4 --whisper-language zh
 - `audio.wav` 本身不是给 AI 直接理解的输入；真正有用的是 Whisper 生成的转录文本。
 - 如果画面细节不够清楚，调高 `--thumb-width` 或改用 `--density dense`。
 - 如果只想快速扫长视频，默认 800 帧策略通常足够先判断内容结构。
+- 最终 HTML 不应该出现 `Source Screenshots`、`Storyboard Sheets`、`Transcript Excerpt`、`summary_context.json`、`manifest`、`frame_count` 等可见工程词；出现时先重写页面。
 - 仓库暂未附带开源许可证；公开发布前请按你的用途选择 LICENSE，并确认示例截图的使用范围。

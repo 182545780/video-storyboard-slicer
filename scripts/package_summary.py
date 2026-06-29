@@ -18,6 +18,32 @@ LOCAL_MEDIA_RE = re.compile(
 )
 REMOTE_SCHEMES = {"http", "https", "data", "mailto", "tel", "javascript"}
 DEFAULT_KEEP_NAMES = {"assets", "summary.html", "summary-long.png"}
+ARTICLE_BANNED_PATTERNS = [
+    r"\bSource Screenshots\b",
+    r"\bFocused Text-Moment Frames\b",
+    r"\bStoryboard Sheets\b",
+    r"\bTranscript Excerpt\b",
+    r"\bAnalysis Report\b",
+    r"\bMetadata\b",
+    r"\bArtifacts?\b",
+    r"\bManifest\b",
+    r"\bsummary_context\.json\b",
+    r"\bai_html_prompt\.md\b",
+    r"\bmoment_selection_prompt\.md\b",
+    r"\bcandidate_moments\.json\b",
+    r"\bselected_screenshots\b",
+    r"\brelative_frame_path\b",
+    r"\bframe_count\b",
+    r"\btranscript_segments\b",
+    r"\bNo focused moment frames extracted yet\b",
+    r"工程总结",
+    r"工作流报告",
+    r"开发者",
+    r"开发文档",
+    r"元数据",
+    r"转录节选",
+    r"素材清单",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,8 +54,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--html", default="summary.html", help="HTML file name inside the bundle.")
     parser.add_argument("--assets-dir", default="assets", help="Final image asset directory inside the bundle.")
     parser.add_argument("--keep", action="append", default=[], help="Additional top-level file or directory name to keep.")
+    parser.add_argument("--skip-article-check", action="store_true", help="Skip public-article quality checks.")
     parser.add_argument("--apply", action="store_true", help="Actually rewrite/copy/delete. Omit for dry-run.")
     return parser.parse_args()
+
+
+def visible_text_from_html(text: str) -> str:
+    text = re.sub(r"<(script|style|template)\b.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def article_quality_warnings(html_text: str) -> list[str]:
+    visible_text = visible_text_from_html(html_text)
+    warnings = []
+    for pattern in ARTICLE_BANNED_PATTERNS:
+        if re.search(pattern, visible_text, flags=re.IGNORECASE):
+            warnings.append(f"Visible engineering/report term found: {pattern}")
+    if not re.search(r"<h1\b", html_text, flags=re.IGNORECASE):
+        warnings.append("Missing an article headline (`h1`).")
+    if not re.search(r"<img\b", html_text, flags=re.IGNORECASE):
+        warnings.append("Missing original-video image evidence (`img`).")
+    if len(visible_text) < 700:
+        warnings.append("Visible article text is too short to feel like a finished public article.")
+    if len(re.findall(r"<h2\b", html_text, flags=re.IGNORECASE)) < 2:
+        warnings.append("Expected at least two narrative sections (`h2`).")
+    return warnings
 
 
 def local_path_and_suffix(value: str) -> tuple[str, str] | None:
@@ -168,6 +219,7 @@ def main() -> int:
         raise SystemExit("HTML and assets directory must live inside the bundle directory.") from exc
 
     rewritten_html, copies, warnings = build_html_plan(bundle, html_path, assets_dir)
+    quality_warnings = [] if args.skip_article_check else article_quality_warnings(rewritten_html)
     keep_names = set(DEFAULT_KEEP_NAMES)
     keep_names.add(html_path.name)
     keep_names.add(assets_dir.name)
@@ -186,6 +238,10 @@ def main() -> int:
         print("Warnings:")
         for warning in warnings:
             print(f"  {warning}")
+    if quality_warnings:
+        print("Article quality warnings:")
+        for warning in quality_warnings:
+            print(f"  {warning}")
     print(f"Top-level paths to remove: {len(removals)}")
     for path in removals:
         print(f"  {path.name}")
@@ -195,6 +251,8 @@ def main() -> int:
         return 0
     if warnings:
         raise SystemExit("Aborting because local media references are missing. Fix the HTML or assets first.")
+    if quality_warnings:
+        raise SystemExit("Aborting because the HTML still reads like an engineering/workflow report. Rewrite it as a public article first.")
 
     replace_assets(copies, assets_dir)
     html_path.write_text(rewritten_html, encoding="utf-8")

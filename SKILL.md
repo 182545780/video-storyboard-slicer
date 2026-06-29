@@ -14,8 +14,8 @@ Use this skill to turn a local video or downloadable video URL into ordered scre
 3. For local frame-only work, run `scripts/make_storyboard.py` directly.
 4. Inspect `summary_context.json`, `storyboard/sheets/storyboard_###.jpg`, and `storyboard/manifest.json` before analysis.
 5. If transcript/copy/comments suggest valuable regions that are not visually proven by the coarse storyboard, use `moment_selection_prompt.md` to make `candidate_moments.json` with start/end ranges, then run `scripts/extract_moment_frames.py summary_context.json candidate_moments.json`. This second pass samples each chosen region into focused storyboard sheets instead of betting on one frame.
-6. If the user requested a final summary page, use the generated `ai_html_prompt.md`, `summary_context.json`, and any `focused_moment_frames` to refine or replace `summary.html` as a WeChat/public-account-ready article, not a developer report. Include original-video screenshots from `selected_screenshots` and focused region frames that are visually useful.
-7. If the user asks for a clean final deliverable, finish `summary.html`, run `scripts/package_summary.py <output-dir>` for a dry-run cleanup plan, then run `scripts/package_summary.py <output-dir> --apply`. The package step copies only images referenced by `summary.html` into `assets/`, rewrites image paths, verifies references, and removes source downloads, manifests, transcripts, storyboard folders, focused-frame folders, prompts, and other engineering artifacts. Leave only `summary.html`, `assets/`, and `summary-long.png` when that long screenshot exists.
+6. If the user requested a final summary page, use the generated `ai_html_prompt.md`, `summary_context.json`, and any `focused_moment_frames` to refine or replace `summary.html` as a WeChat/public-account-ready article, not a developer report. Include original-video screenshots from `selected_screenshots` and focused region frames that are visually useful. The final page must pass `scripts/check_article_html.py summary.html`.
+7. If the user asks for a clean final deliverable, finish `summary.html`, run `scripts/check_article_html.py <output-dir>/summary.html`, run `scripts/package_summary.py <output-dir>` for a dry-run cleanup plan, then run `scripts/package_summary.py <output-dir> --apply`. The package step runs the article check again, copies only images referenced by `summary.html` into `assets/`, rewrites image paths, verifies references, and removes source downloads, manifests, transcripts, storyboard folders, focused-frame folders, prompts, and other engineering artifacts. Leave only `summary.html`, `assets/`, and `summary-long.png` when that long screenshot exists.
 
 Generated outputs:
 
@@ -31,7 +31,7 @@ Generated outputs:
 - `ai_html_prompt.md`: prompt for making the final summary page
 - `moment_selection_prompt.md`: prompt for choosing transcript/copy ranges that deserve focused region storyboard extraction
 - `focused_frames/`: optional second-pass region frames, focused storyboard sheets, manifest, and frame-selection prompt
-- `summary.html`: initial local HTML scaffold containing source screenshots; refine it into a polished article for final delivery
+- `summary.html`: initial local HTML article scaffold containing source screenshots; refine it into a polished public article for final delivery
 - `assets/`: optional final-only image folder when packaging a clean HTML deliverable
 - `summary-long.png`: optional long screenshot of the final article for sharing/preview
 
@@ -68,6 +68,7 @@ python3 /path/to/video-storyboard-slicer/scripts/extract_moment_frames.py ./vide
 For final cleanup after `summary.html` is polished:
 
 ```bash
+python3 /path/to/video-storyboard-slicer/scripts/check_article_html.py ./video-context/summary.html
 python3 /path/to/video-storyboard-slicer/scripts/package_summary.py ./video-context
 python3 /path/to/video-storyboard-slicer/scripts/package_summary.py ./video-context --apply
 ```
@@ -169,6 +170,7 @@ For HTML summary pages, read `summary_context.json` and `ai_html_prompt.md`, the
 
 Write the final HTML as a WeChat/public-account-ready article:
 
+- Treat `summary.html` as a reader-facing article from the first draft. Do not preserve scaffold sections, headings, lists, or wording that expose the workflow.
 - Use a catchy shareable headline, strong subtitle/deck, hooky lead paragraph, crisp section headings, image blocks with captions, pull quotes/key sentences, and an emotionally satisfying ending.
 - Make the page feel like a finished public article that can be uploaded directly to a WeChat official account. Do not make it feel like a workflow report, analysis memo, or internal deliverable.
 - Explain the video's content and why the selected moments matter in natural prose; do not merely list metadata, transcripts, frame counts, JSON links, or artifact paths.
@@ -178,7 +180,9 @@ Write the final HTML as a WeChat/public-account-ready article:
 - Avoid headings like "video understanding report", "summary", "analysis", or "artifacts" in the final article; prefer reader-facing headlines and magazine-style sections.
 - Keep paths relative and local-file friendly; do not require a server or external assets.
 
-When final packaging is requested, run `scripts/package_summary.py <output-dir>` first and inspect the dry-run plan. Then run `scripts/package_summary.py <output-dir> --apply`; it must leave only `summary.html`, `assets/`, and optional `summary-long.png`, with every local image reference in `summary.html` pointing into `assets/`.
+Never ship these visible headings or phrases in the final HTML: `Source Screenshots`, `Focused Text-Moment Frames`, `Storyboard Sheets`, `Transcript Excerpt`, `Metadata`, `Artifacts`, `Manifest`, `summary_context.json`, `ai_html_prompt.md`, `selected_screenshots`, `frame_count`, `工程总结`, `工作流报告`, `元数据`, or `转录节选`.
+
+When final packaging is requested, run `scripts/check_article_html.py <output-dir>/summary.html` first. Then run `scripts/package_summary.py <output-dir>` and inspect the dry-run plan. Then run `scripts/package_summary.py <output-dir> --apply`; it must leave only `summary.html`, `assets/`, and optional `summary-long.png`, with every local image reference in `summary.html` pointing into `assets/`. If `package_summary.py --apply` fails the article check, rewrite the HTML into a public article and rerun it.
 
 Read `references/video-analysis.md` when the task needs more interpretation guidance after generation.
 
@@ -189,3 +193,4 @@ Read `references/video-analysis.md` when the task needs more interpretation guid
 - If details are unreadable, rerun with `--density dense`, larger `--thumb-width`, fewer columns, or a shorter source clip.
 - If too many sheets are produced, rerun with `--density coarse` or `--max-total-frames`.
 - If the moment depends on audio, add transcript/subtitles before final conclusions.
+- Before packaging, run `scripts/check_article_html.py <output-dir>/summary.html`; if it fails, rewrite the page instead of delivering a dry workflow summary.

@@ -596,7 +596,7 @@ Inputs:
 
 Requirements:
 1. Write a polished standalone HTML page at `{summary_path.name}` that can be uploaded directly as a WeChat official account article.
-2. Make the page read like a finished public article for readers: catchy shareable headline, strong subtitle/deck, hooky lead, narrative sections, image evidence, captions, pull quotes/key sentences, and a satisfying ending.
+2. Make the page read like a finished public article for readers: catchy shareable headline, strong subtitle/deck, hooky lead, narrative sections, image evidence, captions, pull quotes/key sentences, and a satisfying ending. It must not read like a data report, workflow report, or engineering summary.
 3. Include original video screenshots from the `selected_screenshots` list; keep image paths relative.
    If `focused_moment_frames` exists, inspect its region storyboard sheets first, then choose visually useful frames or a short visual progression from that focused set.
 4. Explain what happens in the video and why the selected moments matter. Turn title, description, comments, and transcript into engaging natural prose, not bullet-point analysis.
@@ -606,6 +606,12 @@ Requirements:
 8. Keep the page local-file friendly; do not require a server or external assets.
 9. If the user wants a clean final deliverable after the HTML is polished, run `scripts/package_summary.py <output-dir>` to review the cleanup plan, then run it again with `--apply`. The final directory should contain only `summary.html`, `assets/`, and optional `summary-long.png`.
 10. Avoid final-page headings like "video understanding report", "summary", "analysis", "artifacts", or "clip suggestions"; use reader-facing magazine/public-account-style headings.
+11. Before final packaging, run `scripts/check_article_html.py {summary_path.name}`. If it reports dry engineering language, rewrite the page and run the check again.
+
+Hard fail patterns for the final page:
+- Headings such as "Source Screenshots", "Focused Text-Moment Frames", "Storyboard Sheets", "Comments", "Transcript Excerpt", "Metadata", "Artifacts", "Manifest", or "Analysis Report".
+- Visible raw paths, JSON filenames, frame counts, tool commands, or workflow/debug notes.
+- A page that mainly lists facts or timestamps without a narrative point of view.
 """,
         encoding="utf-8",
     )
@@ -654,7 +660,6 @@ Rules:
 
 def write_html_scaffold(output: Path, context: dict[str, Any]) -> Path:
     summary_path = output / "summary.html"
-    metadata = context.get("metadata") or {}
     bili = context.get("bilibili") or {}
     ytdlp = context.get("ytdlp") or {}
     title = bili.get("title") or ytdlp.get("title") or Path(context["video_path"]).name
@@ -662,94 +667,118 @@ def write_html_scaffold(output: Path, context: dict[str, Any]) -> Path:
     cover = rel(bili.get("cover_path"), output)
     screenshots = context.get("selected_screenshots") or []
     focused = ((context.get("focused_moment_frames") or {}).get("captures") or [])[:12]
-    sheets = (context.get("storyboard") or {}).get("sheets") or []
     comments = bili.get("comments") or []
-    transcript_excerpt = context.get("transcript_excerpt") or ""
+
+    deck = description.strip().replace("\n", " ")
+    if len(deck) > 220:
+        deck = deck[:220].rstrip() + "..."
+    if not deck:
+        deck = "这是一篇基于原视频画面、标题、评论与转录线索写成的读者向文章草稿。"
 
     screenshot_html = "\n".join(
-        f'<figure><img src="{html.escape(item["relative_frame_path"])}" alt="Video screenshot at {html.escape(item.get("timestamp", ""))}"><figcaption>{html.escape(item.get("timestamp", ""))}</figcaption></figure>'
-        for item in screenshots
+        f"""<figure class="shot-card">
+          <img src="{html.escape(item["relative_frame_path"])}" alt="原视频画面 {html.escape(item.get("timestamp", ""))}">
+          <figcaption>画面停在 {html.escape(item.get("timestamp", ""))}：这一帧把视频里的关键信息变成了可以被读者直观看见的证据。</figcaption>
+        </figure>"""
+        for item in screenshots[:8]
     )
     focused_html = "\n".join(
-        f'<figure><img src="{html.escape(item["relative_frame_path"])}" alt="Focused video frame at {html.escape(item.get("timestamp", ""))}"><figcaption>{html.escape(item.get("timestamp", ""))} - {html.escape(str(item.get("text") or item.get("reason") or ""))[:120]}</figcaption></figure>'
-        for item in focused
-    )
-    sheet_html = "\n".join(
-        f'<li><a href="{html.escape(item["relative_path"])}">{html.escape(item.get("start", ""))} - {html.escape(item.get("end", ""))}</a></li>'
-        for item in sheets
+        f"""<figure class="shot-card">
+          <img src="{html.escape(item["relative_frame_path"])}" alt="值得重看的原视频瞬间 {html.escape(item.get("timestamp", ""))}">
+          <figcaption>{html.escape(item.get("timestamp", ""))}：{html.escape(str(item.get("text") or item.get("reason") or "这个瞬间值得被放进文章，因为它让抽象观点落到了具体画面上。"))[:140]}</figcaption>
+        </figure>"""
+        for item in focused[:6]
     )
     comment_html = "\n".join(
-        f'<li><strong>{html.escape(str(comment.get("user") or "unknown"))}</strong>: {html.escape(str(comment.get("message") or ""))}</li>'
-        for comment in comments
+        f"""<blockquote>
+          <p>{html.escape(str(comment.get("message") or ""))}</p>
+          <cite>{html.escape(str(comment.get("user") or "观众"))}</cite>
+        </blockquote>"""
+        for comment in comments[:3]
     )
-    cover_html = f'<img class="cover" src="{html.escape(cover)}" alt="Video cover">' if cover else ""
-    no_comments_html = "<li>No comments captured.</li>"
-    transcript_html = html.escape(transcript_excerpt) if transcript_excerpt else "No transcript captured yet."
+    cover_html = (
+        f"""<figure class="cover-figure">
+          <img class="cover" src="{html.escape(cover)}" alt="视频封面">
+          <figcaption>封面先抛出问题，正文要回答它为什么值得被看见。</figcaption>
+        </figure>"""
+        if cover
+        else ""
+    )
 
     html_text = f"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title)}</title>
   <style>
-    :root {{ color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-    body {{ margin: 0; background: #f7f7f4; color: #1f2933; }}
-    main {{ max-width: 1120px; margin: 0 auto; padding: 28px; }}
-    header {{ display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr); gap: 24px; align-items: start; }}
-    h1 {{ font-size: 32px; line-height: 1.15; margin: 0 0 12px; }}
-    h2 {{ font-size: 18px; margin: 32px 0 12px; }}
-    p {{ line-height: 1.65; }}
-    .cover {{ width: 100%; border-radius: 8px; background: #ddd; }}
-    .meta {{ color: #52606d; font-size: 14px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }}
-    figure {{ margin: 0; background: #fff; border: 1px solid #e1e5e8; border-radius: 8px; overflow: hidden; }}
-    figure img {{ width: 100%; display: block; }}
-    figcaption {{ font-size: 13px; padding: 8px 10px; color: #52606d; }}
-    pre {{ white-space: pre-wrap; background: #fff; border: 1px solid #e1e5e8; padding: 14px; border-radius: 8px; max-height: 360px; overflow: auto; }}
-    li {{ margin: 8px 0; }}
-    @media (max-width: 780px) {{ header {{ grid-template-columns: 1fr; }} main {{ padding: 18px; }} }}
+    :root {{ color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; }}
+    body {{ margin: 0; background: #f3f0e8; color: #202124; }}
+    main {{ max-width: 760px; margin: 0 auto; background: #fffdf8; min-height: 100vh; }}
+    article {{ padding: 34px 22px 48px; }}
+    header {{ padding: 10px 0 24px; border-bottom: 1px solid #e8dfcf; }}
+    .eyebrow {{ margin: 0 0 12px; color: #9a4c2e; font-size: 13px; font-weight: 700; letter-spacing: 0; }}
+    h1 {{ font-size: 34px; line-height: 1.18; margin: 0 0 16px; color: #171717; }}
+    .deck {{ margin: 0; color: #5f5a52; font-size: 17px; line-height: 1.75; }}
+    h2 {{ font-size: 23px; line-height: 1.35; margin: 38px 0 14px; color: #171717; }}
+    p {{ font-size: 16px; line-height: 1.9; margin: 14px 0; }}
+    .lead {{ font-size: 18px; color: #32302c; }}
+    .pull {{ margin: 28px 0; padding: 18px 20px; border-left: 4px solid #b85c38; background: #fbf3e7; font-size: 20px; line-height: 1.7; font-weight: 700; }}
+    .cover-figure, .shot-card {{ margin: 24px 0; }}
+    img {{ width: 100%; display: block; border-radius: 6px; background: #e6e0d6; }}
+    figcaption {{ color: #716a61; font-size: 13px; line-height: 1.65; padding: 9px 2px 0; }}
+    .shot-grid {{ display: grid; grid-template-columns: 1fr; gap: 18px; margin-top: 18px; }}
+    blockquote {{ margin: 16px 0; padding: 16px 18px; background: #f6f7f8; border-left: 3px solid #6d7f8f; }}
+    blockquote p {{ margin: 0; color: #2c3136; }}
+    cite {{ display: block; margin-top: 8px; color: #7a7f85; font-size: 13px; font-style: normal; }}
+    .ending {{ margin-top: 34px; padding-top: 22px; border-top: 1px solid #e8dfcf; color: #3a3630; }}
+    @media (min-width: 720px) {{ article {{ padding: 48px 54px 64px; }} h1 {{ font-size: 42px; }} }}
   </style>
 </head>
 <body>
 <main>
-  <header>
-    <section>
+  <article>
+    <header>
+      <p class="eyebrow">视频里的关键一幕</p>
       <h1>{html.escape(title)}</h1>
-      <p class="meta">Generated {html.escape(metadata.get("generated_at", ""))}</p>
-      <p>{html.escape(description[:1200])}</p>
-    </section>
+      <p class="deck">{html.escape(deck)}</p>
+    </header>
+
     {cover_html}
-  </header>
 
-  <section>
-    <h2>Source Screenshots</h2>
-    <div class="grid">
-      {screenshot_html}
-    </div>
-  </section>
+    <p class="lead">先把最重要的感受放在前面：这支视频真正值得被记住的，不只是它说了什么，而是它怎样把一个抽象话题一步步推到眼前。</p>
+    <p>标题给了入口，画面给了证据，评论则说明观众为什么会停下来。好的视频总结不该只复述信息，它应该替读者抓住那条暗线：从问题出现，到情绪被点燃，再到答案变得没那么轻松。</p>
 
-  <section>
-    <h2>Focused Text-Moment Frames</h2>
-    <div class="grid">
-      {focused_html or "<p>No focused moment frames extracted yet.</p>"}
-    </div>
-  </section>
+    <div class="pull">真正吸引人的地方，往往不是结论本身，而是结论出现之前，画面里那些让人意识到“事情不简单”的瞬间。</div>
 
-  <section>
-    <h2>Storyboard Sheets</h2>
-    <ul>{sheet_html}</ul>
-  </section>
+    <section>
+      <h2>它先把问题摆到台前</h2>
+      <p>开头的任务不是交代背景，而是让读者迅速明白：这不是一段可以随手划走的视频。它把人物、观点或事件放在一个足够紧的场景里，让后面的每一次转折都有了重量。</p>
+      <div class="shot-grid">
+        {screenshot_html}
+      </div>
+    </section>
 
-  <section>
-    <h2>Comments</h2>
-    <ul>{comment_html or no_comments_html}</ul>
-  </section>
+    <section>
+      <h2>几个值得反复看的瞬间</h2>
+      <p>如果只看文字，很多信息会显得平铺直叙；但一旦回到画面，语气、停顿、表情、镜头选择都会变成理解内容的线索。下面这些定格适合继续扩写成文章里的关键证据。</p>
+      <div class="shot-grid">
+        {focused_html or screenshot_html}
+      </div>
+    </section>
 
-  <section>
-    <h2>Transcript Excerpt</h2>
-    <pre>{transcript_html}</pre>
-  </section>
+    <section>
+      <h2>观众真正接住了什么</h2>
+      <p>评论区的价值不在于替视频下结论，而在于暴露观众最敏感的部分：他们在哪一句话前停住，在哪个问题上产生共鸣，又在哪里感到不安。</p>
+      {comment_html or "<p>当评论素材不足时，正文应更多依靠视频画面和转录内容建立判断，而不是硬凑互动感。</p>"}
+    </section>
+
+    <section>
+      <h2>为什么它值得被写成一篇文章</h2>
+      <p>把这支视频写成公众号文章时，重点不是把所有信息压缩成清单，而是把读者带回观看现场：先看见问题，再理解冲突，最后留下一个可以继续思考的余味。</p>
+      <p class="ending">一个好的结尾，应该让读者觉得自己不只是“看完了一个视频”，而是重新理解了视频里那个问题为什么会重要。</p>
+    </section>
+  </article>
 </main>
 </body>
 </html>

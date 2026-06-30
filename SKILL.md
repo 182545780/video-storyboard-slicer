@@ -12,10 +12,10 @@ Use this skill to turn a local video or downloadable video URL into ordered scre
 1. Confirm the source is a local video file or a URL the user is allowed to download/analyze.
 2. For URLs or full context bundles, run `scripts/prepare_video_context.py`. It downloads with yt-dlp, fetches Bilibili metadata when applicable, runs storyboard extraction, runs local Whisper by default, and writes HTML-summary inputs.
 3. For local frame-only work, run `scripts/make_storyboard.py` directly.
-4. Inspect `summary_context.json`, `storyboard/sheets/storyboard_###.jpg`, and `storyboard/manifest.json` before analysis.
-5. If transcript/copy/comments suggest valuable regions that are not visually proven by the coarse storyboard, use `moment_selection_prompt.md` to make `candidate_moments.json` with start/end ranges, then run `scripts/extract_moment_frames.py summary_context.json candidate_moments.json`. This second pass samples each chosen region into focused storyboard sheets instead of betting on one frame.
-6. If the user requested a final summary page, use the generated `ai_html_prompt.md`, `summary_context.json`, and any `focused_moment_frames` to refine or replace `summary.html` as a WeChat/public-account-ready article, not a developer report. Include original-video screenshots from `selected_screenshots` and focused region frames that are visually useful. The final page must pass `scripts/check_article_html.py summary.html`.
-7. If the user asks for a clean final deliverable, finish `summary.html`, run `scripts/check_article_html.py <output-dir>/summary.html`, run `scripts/package_summary.py <output-dir>` for a dry-run cleanup plan, then run `scripts/package_summary.py <output-dir> --apply`. The package step runs the article check again, copies only images referenced by `summary.html` into `assets/`, rewrites image paths, verifies references, and removes source downloads, manifests, transcripts, storyboard folders, focused-frame folders, prompts, and other engineering artifacts. Leave only `summary.html`, `assets/`, and `summary-long.png` when that long screenshot exists.
+4. Treat the first storyboard route as mandatory visual understanding, not as a passive screenshot pool. Inspect `storyboard/sheets/storyboard_###.jpg`, `storyboard/manifest.json`, and `summary_context.json`, then use `visual_digest_prompt.md` to write `visual_digest.md` or `visual_digest.json`. This digest must summarize visible scene flow, visually promising timestamps, repetitive spans, and ranges that need transcript context.
+5. If transcript/copy/comments suggest valuable regions that are not visually proven by the coarse storyboard, use `moment_selection_prompt.md` plus `visual_digest.md/json` to make `candidate_moments.json` with start/end ranges, then run `scripts/extract_moment_frames.py summary_context.json candidate_moments.json`. This second pass samples each chosen region into focused storyboard sheets instead of betting on one frame.
+6. If the user requested a final summary page, use the generated `ai_html_prompt.md`, `summary_context.json`, `visual_digest.md/json`, and any `focused_moment_frames` to refine or replace `summary.html` as a WeChat/public-account-ready article, not a developer report. Include original-video screenshots from `selected_screenshots` and focused region frames that are visually useful. The final page must pass `scripts/check_article_html.py summary.html`.
+7. If the user asks for a clean final deliverable, finish `summary.html`, run `scripts/check_article_html.py <output-dir>/summary.html`, run `scripts/package_summary.py <output-dir>` for a dry-run cleanup plan, then run `scripts/package_summary.py <output-dir> --apply`. The package step runs the article check and first-pass visual digest check again, copies only images referenced by `summary.html` into `assets/`, rewrites image paths, verifies references, and removes source downloads, manifests, transcripts, storyboard folders, focused-frame folders, prompts, and other engineering artifacts. Leave only `summary.html`, `assets/`, and `summary-long.png` when that long screenshot exists.
 
 Generated outputs:
 
@@ -28,6 +28,8 @@ Generated outputs:
 - `storyboard/manifest.json`: source metadata, adaptive config, timestamps, frame paths, and sheet coverage
 - `transcript/`: local Whisper outputs, including `transcript_segments.json` when timestamped segments are available
 - `summary_context.json`: compact context for AI analysis and HTML generation
+- `visual_digest_prompt.md`: prompt for converting the first storyboard route into a visual understanding digest
+- `visual_digest.md` / `visual_digest.json`: mandatory first-pass visual digest written after inspecting all storyboard sheets
 - `ai_html_prompt.md`: prompt for making the final summary page
 - `moment_selection_prompt.md`: prompt for choosing transcript/copy ranges that deserve focused region storyboard extraction
 - `focused_frames/`: optional second-pass region frames, focused storyboard sheets, manifest, and frame-selection prompt
@@ -158,15 +160,28 @@ For general video understanding, ask for summary, key timestamps, visual changes
 
 For editing/highlight tasks, ask for hook, keep/cut ranges, peak moment, thumbnail frame, text/effect notes, and transcript needs.
 
+Three-route understanding model:
+
+1. First visual route: storyboard sheets see the whole video. Write `visual_digest.md` or `visual_digest.json` before any final selection.
+2. Transcript route: Whisper text and metadata explain what is said and why viewers care.
+3. Focused visual route: transcript plus `visual_digest` selects ranges for `extract_moment_frames.py` so important moments are seen more clearly.
+
+For first-pass visual digestion:
+
+1. Read `visual_digest_prompt.md`, `summary_context.json`, and `storyboard/manifest.json`.
+2. Inspect every `storyboard/sheets/storyboard_###.jpg` in order.
+3. Write `visual_digest.md` and preferably `visual_digest.json` with overall visual type, per-sheet visible summaries, promising timestamps, repetitive spans, questions for text/audio, and recommended focused reruns.
+4. Do not select transcript moments or write the final HTML until this digest exists.
+
 For text-driven focused extraction:
 
-1. Read `summary_context.json`, `transcript_segments_path`, comments, title, and description.
+1. Read `summary_context.json`, `visual_digest.md/json`, `transcript_segments_path`, comments, title, and description.
 2. Use `moment_selection_prompt.md` to write `candidate_moments.json` with start/end ranges, not only single timestamps. Expand ranges enough to cover the likely visual action.
 3. Run `extract_moment_frames.py` to sample each selected transcript/copy region into focused storyboard sheets. Defaults capture up to 36 compact frames per region with surrounding context; use `--interval`, `--frames-per-moment`, `--cols`, `--max-frames-per-sheet`, and `--thumb-width` to tune.
 4. Inspect `focused_frames/sheets/focused_frames_###.jpg` as mini storyboards, then inspect individual frames only for the best visual evidence.
 5. Use `focused_frames/final_frame_selection_prompt.md` to decide which regions and frames actually support the final summary.
 
-For HTML summary pages, read `summary_context.json` and `ai_html_prompt.md`, then create or refine `summary.html`. The final page must include original-video screenshots from `selected_screenshots`, not only the cover image. If `focused_moment_frames` exists, inspect its focused region sheets first and prefer visually confirmed frames or short visual progressions for important claims.
+For HTML summary pages, read `summary_context.json`, `visual_digest.md/json`, and `ai_html_prompt.md`, then create or refine `summary.html`. The final page must include original-video screenshots from `selected_screenshots`, not only the cover image. If `focused_moment_frames` exists, inspect its focused region sheets first and prefer visually confirmed frames or short visual progressions for important claims.
 
 Write the final HTML as a WeChat/public-account-ready article:
 
@@ -182,13 +197,14 @@ Write the final HTML as a WeChat/public-account-ready article:
 
 Never ship these visible headings or phrases in the final HTML: `Source Screenshots`, `Focused Text-Moment Frames`, `Storyboard Sheets`, `Transcript Excerpt`, `Metadata`, `Artifacts`, `Manifest`, `summary_context.json`, `ai_html_prompt.md`, `selected_screenshots`, `frame_count`, `工程总结`, `工作流报告`, `元数据`, or `转录节选`.
 
-When final packaging is requested, run `scripts/check_article_html.py <output-dir>/summary.html` first. Then run `scripts/package_summary.py <output-dir>` and inspect the dry-run plan. Then run `scripts/package_summary.py <output-dir> --apply`; it must leave only `summary.html`, `assets/`, and optional `summary-long.png`, with every local image reference in `summary.html` pointing into `assets/`. If `package_summary.py --apply` fails the article check, rewrite the HTML into a public article and rerun it.
+When final packaging is requested, run `scripts/check_article_html.py <output-dir>/summary.html` first. Then run `scripts/package_summary.py <output-dir>` and inspect the dry-run plan. Then run `scripts/package_summary.py <output-dir> --apply`; it must leave only `summary.html`, `assets/`, and optional `summary-long.png`, with every local image reference in `summary.html` pointing into `assets/`. If `package_summary.py --apply` fails the article check or visual digest check, create the missing visual digest or rewrite the HTML into a public article and rerun it.
 
 Read `references/video-analysis.md` when the task needs more interpretation guidance after generation.
 
 ## Quality Checks
 
 - Open the first and last sheet; confirm timestamps are readable and frame order is correct.
+- Confirm `visual_digest.md` or `visual_digest.json` exists before selecting candidate moments or packaging a final page.
 - Check `manifest.json` for `adaptive_config` so the sampling choice is explicit.
 - If details are unreadable, rerun with `--density dense`, larger `--thumb-width`, fewer columns, or a shorter source clip.
 - If too many sheets are produced, rerun with `--density coarse` or `--max-total-frames`.

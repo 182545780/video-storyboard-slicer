@@ -584,6 +584,72 @@ def write_transcript_segments(output: Path, segments: list[dict[str, Any]]) -> P
     return segments_path
 
 
+def write_visual_digest_prompt(output: Path, context_path: Path) -> Path:
+    prompt_path = output / "visual_digest_prompt.md"
+    prompt_path.write_text(
+        f"""Create the first-pass visual digest before selecting text moments or writing the final article.
+
+Input:
+- Context JSON: {context_path.name}
+- Storyboard sheets: `storyboard/sheets/storyboard_###.jpg`
+- Storyboard manifest: `storyboard/manifest.json`
+
+Task:
+Inspect every storyboard sheet in order. Treat this as the first route of video understanding: it should answer "what can be seen across the whole video?" before transcript-driven reasoning narrows the focus.
+
+Write `visual_digest.md` in the output directory with these sections:
+
+1. Overall visual type
+   - Identify whether this is interview, gameplay, tutorial, lecture, livestream, reaction, vlog, product demo, stage/performance, screen recording, or mixed.
+2. Timeline visual map
+   - For each storyboard sheet, summarize the visible scene, scene changes, onscreen text/UI, people/characters, objects, and notable visual rhythm.
+3. Visually promising timestamps
+   - List timestamps or short ranges that look useful for final screenshots, thumbnails, transitions, or article evidence. Explain why each is visually useful.
+4. Weak or repetitive spans
+   - Identify stretches where the picture is repetitive and transcript should carry more weight.
+5. Questions for text/audio
+   - Note any visual moments that need Whisper text or comments to understand.
+6. Recommended focused reruns
+   - Suggest time ranges that deserve `extract_moment_frames.py` second-pass region storyboards.
+
+Also write `visual_digest.json` with this shape:
+
+```json
+{{
+  "overall_visual_type": "gameplay/tutorial/interview/etc",
+  "sheet_notes": [
+    {{
+      "sheet": "storyboard/sheets/storyboard_001.jpg",
+      "start": "00:00",
+      "end": "03:20",
+      "visible_summary": "what is visible",
+      "scene_changes": ["major visual changes"],
+      "promising_timestamps": [
+        {{"timestamp": "00:42", "reason": "why this frame/range matters visually"}}
+      ],
+      "needs_text_context": false
+    }}
+  ],
+  "recommended_focused_ranges": [
+    {{"start": "00:42", "end": "01:05", "reason": "why to rerun as a focused storyboard"}}
+  ],
+  "avoid_or_low_value_ranges": [
+    {{"start": "02:10", "end": "03:00", "reason": "repetitive/static"}}
+  ]
+}}
+```
+
+Rules:
+- Do not use transcript or comments as the main evidence for this pass; this pass is for visual understanding.
+- Use transcript only to mark "needs text context" when the picture alone is ambiguous.
+- Do not skip sheets. If a sheet is repetitive, say so explicitly.
+- Later steps must read `visual_digest.md` before selecting candidate moments or writing `summary.html`.
+""",
+        encoding="utf-8",
+    )
+    return prompt_path
+
+
 def write_ai_prompt(output: Path, context_path: Path, summary_path: Path) -> Path:
     prompt_path = output / "ai_html_prompt.md"
     prompt_path.write_text(
@@ -593,20 +659,23 @@ Inputs:
 - Context JSON: {context_path.name}
 - Current HTML scaffold: {summary_path.name}
 - Storyboard sheets and selected source screenshots are referenced in the context JSON.
+- Required first-pass visual digest: `visual_digest.md` or `visual_digest.json`.
 
 Requirements:
-1. Write a polished standalone HTML page at `{summary_path.name}` that can be uploaded directly as a WeChat official account article.
-2. Make the page read like a finished public article for readers: catchy shareable headline, strong subtitle/deck, hooky lead, narrative sections, image evidence, captions, pull quotes/key sentences, and a satisfying ending. It must not read like a data report, workflow report, or engineering summary.
-3. Include original video screenshots from the `selected_screenshots` list; keep image paths relative.
+1. Before writing or refining the page, read `visual_digest.md` or `visual_digest.json`. If neither exists, create it from `visual_digest_prompt.md` by inspecting all storyboard sheets first.
+2. Write a polished standalone HTML page at `{summary_path.name}` that can be uploaded directly as a WeChat official account article.
+3. Make the page read like a finished public article for readers: catchy shareable headline, strong subtitle/deck, hooky lead, narrative sections, image evidence, captions, pull quotes/key sentences, and a satisfying ending. It must not read like a data report, workflow report, or engineering summary.
+4. Include original video screenshots from the `selected_screenshots` list; keep image paths relative.
    If `focused_moment_frames` exists, inspect its region storyboard sheets first, then choose visually useful frames or a short visual progression from that focused set.
-4. Explain what happens in the video and why the selected moments matter. Turn title, description, comments, and transcript into engaging natural prose, not bullet-point analysis.
-5. Do not expose developer-only or backstage artifacts such as raw JSON links, manifest paths, frame counts, exhaustive transcript files, implementation notes, clip/editing suggestions, or generated file paths unless the user explicitly asks.
-6. Distinguish visual evidence from transcript/comment context.
-7. Do not invent details that are not supported by the screenshots, metadata, comments, or transcript.
-8. Keep the page local-file friendly; do not require a server or external assets.
-9. If the user wants a clean final deliverable after the HTML is polished, run `scripts/package_summary.py <output-dir>` to review the cleanup plan, then run it again with `--apply`. The final directory should contain only `summary.html`, `assets/`, and optional `summary-long.png`.
-10. Avoid final-page headings like "video understanding report", "summary", "analysis", "artifacts", or "clip suggestions"; use reader-facing magazine/public-account-style headings.
-11. Before final packaging, run `scripts/check_article_html.py {summary_path.name}`. If it reports dry engineering language, rewrite the page and run the check again.
+5. Use the visual digest as the source of truth for visible scene flow, useful screenshots, repetitive sections, and places where visuals need text context.
+6. Explain what happens in the video and why the selected moments matter. Turn title, description, comments, visual digest, and transcript into engaging natural prose, not bullet-point analysis.
+7. Do not expose developer-only or backstage artifacts such as raw JSON links, manifest paths, frame counts, exhaustive transcript files, implementation notes, clip/editing suggestions, or generated file paths unless the user explicitly asks.
+8. Distinguish visual evidence from transcript/comment context.
+9. Do not invent details that are not supported by the screenshots, visual digest, metadata, comments, or transcript.
+10. Keep the page local-file friendly; do not require a server or external assets.
+11. If the user wants a clean final deliverable after the HTML is polished, run `scripts/package_summary.py <output-dir>` to review the cleanup plan, then run it again with `--apply`. The final directory should contain only `summary.html`, `assets/`, and optional `summary-long.png`.
+12. Avoid final-page headings like "video understanding report", "summary", "analysis", "artifacts", or "clip suggestions"; use reader-facing magazine/public-account-style headings.
+13. Before final packaging, run `scripts/check_article_html.py {summary_path.name}`. If it reports dry engineering language, rewrite the page and run the check again.
 
 Hard fail patterns for the final page:
 - Headings such as "Source Screenshots", "Focused Text-Moment Frames", "Storyboard Sheets", "Comments", "Transcript Excerpt", "Metadata", "Artifacts", "Manifest", or "Analysis Report".
@@ -625,8 +694,11 @@ def write_moment_selection_prompt(output: Path, context_path: Path) -> Path:
 
 Input:
 - Context JSON: {context_path.name}
+- Required first-pass visual digest: `visual_digest.md` or `visual_digest.json`
 
-Read the title, description, comments, and local Whisper transcript data referenced in the context. Prefer `transcript_segments_path` because it contains timestamped Whisper segments. Pick only regions where the text suggests there may be useful visual evidence in the video: a reaction, action, object, UI state, visual joke, scene change, demonstration, or emotionally important moment.
+Before selecting moments, read `visual_digest.md` or `visual_digest.json`. If neither exists, create it from `visual_digest_prompt.md` by inspecting every storyboard sheet first. The first-pass visual digest tells you which ranges are visually promising, repetitive, ambiguous, or in need of text context.
+
+Then read the title, description, comments, and local Whisper transcript data referenced in the context. Prefer `transcript_segments_path` because it contains timestamped Whisper segments. Pick only regions where text importance and visual potential overlap: a reaction, action, object, UI state, visual joke, scene change, demonstration, or emotionally important moment that the first-pass visual map suggests may be useful.
 
 Write a JSON file named `candidate_moments.json` with this shape:
 
@@ -645,6 +717,7 @@ Write a JSON file named `candidate_moments.json` with this shape:
 ```
 
 Rules:
+- Do not choose moments from transcript alone. A candidate should either appear in `visual_digest` as visually promising/ambiguous, or explain why text reveals a useful range that the coarse storyboard may have missed.
 - Prefer timestamped transcript segments when available.
 - Treat local Whisper text as an ASR draft; preserve timestamps but allow minor wording uncertainty.
 - Prefer start/end ranges over single timestamps. Expand the range enough to cover the surrounding visual action, but avoid multi-minute spans unless the scene itself stays relevant.
@@ -823,6 +896,9 @@ def build_context(
         "ytdlp_info_path": rel(info_path, output),
         "bilibili": bili,
         "storyboard": storyboard,
+        "visual_digest_path": "visual_digest.md",
+        "visual_digest_json_path": "visual_digest.json",
+        "visual_digest_prompt_path": "visual_digest_prompt.md",
         "selected_screenshots": selected,
         "transcription": transcription,
         "transcript_segments_path": rel(transcript_segments_path, output),
@@ -917,6 +993,7 @@ def main() -> int:
     context = build_context(output, source, video_path, info, info_path, bili, storyboard_manifest, transcription)
     context_path = output / "summary_context.json"
     write_json(context_path, context)
+    visual_digest_prompt_path = write_visual_digest_prompt(output, context_path)
 
     summary_path = None
     if not args.no_html:
@@ -929,6 +1006,7 @@ def main() -> int:
     print(f"Output: {output}")
     print(f"Video: {video_path}")
     print(f"Context: {context_path}")
+    print(f"Visual digest prompt: {visual_digest_prompt_path}")
     print(f"AI HTML prompt: {prompt_path}")
     print(f"Moment selection prompt: {moment_prompt_path}")
     if summary_path:

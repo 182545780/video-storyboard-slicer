@@ -55,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--assets-dir", default="assets", help="Final image asset directory inside the bundle.")
     parser.add_argument("--keep", action="append", default=[], help="Additional top-level file or directory name to keep.")
     parser.add_argument("--skip-article-check", action="store_true", help="Skip public-article quality checks.")
+    parser.add_argument("--skip-visual-digest-check", action="store_true", help="Skip the required first-pass visual digest check.")
     parser.add_argument("--apply", action="store_true", help="Actually rewrite/copy/delete. Omit for dry-run.")
     return parser.parse_args()
 
@@ -81,6 +82,26 @@ def article_quality_warnings(html_text: str) -> list[str]:
     if len(re.findall(r"<h2\b", html_text, flags=re.IGNORECASE)) < 2:
         warnings.append("Expected at least two narrative sections (`h2`).")
     return warnings
+
+
+def visual_digest_warnings(bundle: Path) -> list[str]:
+    workflow_artifacts = [
+        bundle / "storyboard",
+        bundle / "summary_context.json",
+        bundle / "visual_digest_prompt.md",
+        bundle / "moment_selection_prompt.md",
+    ]
+    has_workflow_artifacts = any(path.exists() for path in workflow_artifacts)
+    if not has_workflow_artifacts:
+        return []
+
+    digest_paths = [bundle / "visual_digest.md", bundle / "visual_digest.json"]
+    existing = [path for path in digest_paths if path.exists() and path.stat().st_size > 200]
+    if existing:
+        return []
+    return [
+        "Missing first-pass visual digest. Inspect storyboard/sheets/storyboard_###.jpg and write visual_digest.md or visual_digest.json before final packaging."
+    ]
 
 
 def local_path_and_suffix(value: str) -> tuple[str, str] | None:
@@ -220,6 +241,7 @@ def main() -> int:
 
     rewritten_html, copies, warnings = build_html_plan(bundle, html_path, assets_dir)
     quality_warnings = [] if args.skip_article_check else article_quality_warnings(rewritten_html)
+    digest_warnings = [] if args.skip_visual_digest_check else visual_digest_warnings(bundle)
     keep_names = set(DEFAULT_KEEP_NAMES)
     keep_names.add(html_path.name)
     keep_names.add(assets_dir.name)
@@ -242,6 +264,10 @@ def main() -> int:
         print("Article quality warnings:")
         for warning in quality_warnings:
             print(f"  {warning}")
+    if digest_warnings:
+        print("Visual digest warnings:")
+        for warning in digest_warnings:
+            print(f"  {warning}")
     print(f"Top-level paths to remove: {len(removals)}")
     for path in removals:
         print(f"  {path.name}")
@@ -253,6 +279,8 @@ def main() -> int:
         raise SystemExit("Aborting because local media references are missing. Fix the HTML or assets first.")
     if quality_warnings:
         raise SystemExit("Aborting because the HTML still reads like an engineering/workflow report. Rewrite it as a public article first.")
+    if digest_warnings:
+        raise SystemExit("Aborting because the first-pass storyboard has not been turned into a visual digest yet.")
 
     replace_assets(copies, assets_dir)
     html_path.write_text(rewritten_html, encoding="utf-8")

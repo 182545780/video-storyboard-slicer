@@ -18,8 +18,8 @@
 - 读取 B 站标题、简介、封面、基础数据和前几条评论，辅助 AI 理解语境。
 - 用本地 Whisper 生成带时间戳的转录文本。
 - 按视频时长自适应抽帧。当前默认策略下，一小时视频 balanced 模式约 800 帧，长视频拼图每张最多 80 帧。
-- 将截图按时间顺序排成 storyboard sheet，让 AI 先粗略理解全片画面流动。
-- 根据转录文案挑选可能有价值的时间段，再对这些区域做第二轮高密度拼图。
+- 将截图按时间顺序排成 storyboard sheet，并强制先写 `visual_digest.md/json`，让第一路视觉分析真正参与理解。
+- 根据视觉摘要和转录文案共同挑选可能有价值的时间段，再对这些区域做第二轮高密度拼图。
 - 生成 `summary.html` 草稿，并提示 AI 改成公众号文章式排版。
 - 用 `check_article_html.py` 拦截工程报告味的 HTML，避免把 dry summary 当成最终页面交付。
 - 最后用 `package_summary.py` 清理工程文件，只留下 `summary.html`、`assets/` 和可选长图；打包时会再次检查文章质量。
@@ -92,9 +92,26 @@ python3 scripts/make_storyboard.py ./input.mp4 --output ./storyboard-out
 python3 scripts/make_storyboard.py ./input.mp4 --dry-run
 ```
 
+## 三路视频理解
+
+这个工作流不只靠转录，也不把截图当成备用素材。它分成三路：
+
+1. 第一路看全片：先检查所有 `storyboard/sheets/storyboard_###.jpg`，写 `visual_digest.md` 或 `visual_digest.json`，总结画面类型、场景变化、视觉上值得截的时间点、重复段落和需要文案补充的地方。
+2. 第二路听全片：用 Whisper、标题、简介和评论理解视频在说什么。
+3. 第三路看重点：用视觉摘要和文案共同选择候选时间段，再跑 `extract_moment_frames.py` 做重点区域拼图。
+
+第一轮处理结束后，先按 `visual_digest_prompt.md` 写视觉摘要：
+
+```bash
+# 打开并执行里面的要求，产出 visual_digest.md 或 visual_digest.json
+cat ./video-context/visual_digest_prompt.md
+```
+
+没有 `visual_digest.md` 或 `visual_digest.json` 时，`package_summary.py --apply` 会拒绝最终打包。
+
 ## 文案辅助重点区域抽帧
 
-第一轮处理结束后，阅读 `summary_context.json`、`moment_selection_prompt.md` 和 Whisper 转录，写一个 `candidate_moments.json`：
+完成第一路视觉摘要后，阅读 `summary_context.json`、`visual_digest.md/json`、`moment_selection_prompt.md` 和 Whisper 转录，写一个 `candidate_moments.json`：
 
 ```json
 {
@@ -121,6 +138,12 @@ python3 scripts/extract_moment_frames.py ./video-context/summary_context.json ./
 ## 生成和清理最终 HTML
 
 工作流会生成 `summary.html` 和 `ai_html_prompt.md`。先把 `summary.html` 改成面向读者的完整文章页，再执行清理。
+
+先确认第一路视觉摘要已经存在：
+
+```bash
+ls ./video-context/visual_digest.md ./video-context/visual_digest.json
+```
 
 先检查它是不是还像工程总结：
 
@@ -170,4 +193,5 @@ python3 scripts/prepare_video_context.py ./input.mp4 --whisper-language zh
 - `audio.wav` 本身不是给 AI 直接理解的输入；真正有用的是 Whisper 生成的转录文本。
 - 如果画面细节不够清楚，调高 `--thumb-width` 或改用 `--density dense`。
 - 如果只想快速扫长视频，默认 800 帧策略通常足够先判断内容结构。
+- 不要跳过第一路视觉摘要；它决定后续候选片段和最终截图是否真的看过全片。
 - 最终 HTML 不应该出现 `Source Screenshots`、`Storyboard Sheets`、`Transcript Excerpt`、`summary_context.json`、`manifest`、`frame_count` 等可见工程词；出现时先重写页面。

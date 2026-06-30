@@ -10,7 +10,7 @@
 
 ![站在 AI 风暴中心的人，说出了最不安的真话](docs/screenshots/anthropic-ceo-summary-long.png)
 
-![一个亿年薪，不是 AI 最吓人的地方](docs/screenshots/bilibili-ai-summary-long.png)
+![AI 能把一个游戏想法推到多远？](docs/screenshots/game-ai-summary-long.png)
 
 ## 能做什么
 

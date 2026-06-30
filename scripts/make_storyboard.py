@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create adaptive timestamped storyboard sheets from a video file."""
+"""Create 1 FPS timestamped storyboard sheets from a video file."""
 
 from __future__ import annotations
 
@@ -41,11 +41,8 @@ NICE_INTERVALS = [
     90,
     120,
 ]
-DENSITY_MULTIPLIERS = {
-    "coarse": 0.7,
-    "balanced": 1.0,
-    "dense": 1.5,
-}
+DENSITY_CHOICES = ("coarse", "balanced", "dense")
+DEFAULT_INTERVAL_SECONDS = 1.0
 
 
 @dataclass
@@ -139,26 +136,6 @@ def format_time(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}{suffix}"
 
 
-def choose_target_frames(duration: float, density: str, max_total_frames: int | None) -> int:
-    if duration <= 60:
-        base = 120
-    elif duration <= 180:
-        base = 180
-    elif duration <= 600:
-        base = 320
-    elif duration <= 1800:
-        base = 520
-    elif duration <= 7200:
-        base = 800
-    else:
-        base = 1000
-
-    target = max(8, round(base * DENSITY_MULTIPLIERS[density]))
-    if max_total_frames is not None:
-        target = min(target, max_total_frames)
-    return target
-
-
 def choose_nice_interval(raw_interval: float) -> float:
     for interval in NICE_INTERVALS:
         if interval >= raw_interval:
@@ -207,14 +184,13 @@ def build_adaptive_config(
     label_height: int,
 ) -> StoryboardConfig:
     duration = meta.duration_seconds
-    target_total_frames = choose_target_frames(duration, density, max_total_frames)
 
     if interval_override is None:
-        if target_total_frames >= 600:
-            interval = max(0.25, duration / max(target_total_frames - 1, 1))
+        if max_total_frames is None:
+            interval = DEFAULT_INTERVAL_SECONDS
         else:
-            raw_interval = duration / max(target_total_frames, 1)
-            interval = choose_nice_interval(max(0.25, raw_interval))
+            raw_interval = duration / max(max_total_frames - 1, 1)
+            interval = DEFAULT_INTERVAL_SECONDS if raw_interval <= DEFAULT_INTERVAL_SECONDS else choose_nice_interval(raw_interval)
     else:
         interval = interval_override
 
@@ -229,6 +205,7 @@ def build_adaptive_config(
 
     thumb_width = thumb_width_override or choose_auto_thumb_width(duration, meta.width)
     expected_total_frames = len(build_timestamps(duration, interval))
+    target_total_frames = expected_total_frames
 
     if duration <= 60:
         bucket = "short clip"
@@ -240,8 +217,9 @@ def build_adaptive_config(
         bucket = "very long video"
 
     rationale = (
-        f"Auto settings treat this as a {bucket}: target about {target_total_frames} frames, "
-        f"sample every {interval:g}s, write {max_frames_per_sheet} compact overview frames per sheet."
+        f"Auto settings treat this as a {bucket}: default 1 FPS visual indexing, "
+        f"sample every {interval:g}s, expect about {expected_total_frames} frames, "
+        f"write {max_frames_per_sheet} timestamped frames per sheet."
     )
     return StoryboardConfig(
         density=density,
@@ -383,16 +361,16 @@ If the sheets alone are not enough, say what additional transcript, audio, or hi
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create adaptive timestamped storyboard sheets from a video.")
+    parser = argparse.ArgumentParser(description="Create default 1 FPS timestamped storyboard sheets from a video.")
     parser.add_argument("video", type=Path)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument(
         "--density",
-        choices=sorted(DENSITY_MULTIPLIERS.keys()),
+        choices=sorted(DENSITY_CHOICES),
         default="balanced",
-        help="Sampling density used by adaptive defaults.",
+        help="Layout density for sheet shape and thumbnails. Default sampling remains 1 FPS unless capped or overridden.",
     )
-    parser.add_argument("--max-total-frames", type=int, default=None, help="Cap the adaptive total frame target.")
+    parser.add_argument("--max-total-frames", type=int, default=None, help="Cap total frames below the default 1 FPS visual index.")
     parser.add_argument("--interval", type=float, default=None, help="Override seconds between extracted frames.")
     parser.add_argument("--cols", type=int, default=None, help="Override sheet column count.")
     parser.add_argument("--max-frames-per-sheet", type=int, default=None, help="Override sheet frame count.")
@@ -404,7 +382,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also write audio/audio.wav for later ASR transcription. GPT cannot use this file directly.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Print adaptive settings without extracting frames.")
+    parser.add_argument("--dry-run", action="store_true", help="Print 1 FPS storyboard settings without extracting frames.")
     return parser.parse_args()
 
 

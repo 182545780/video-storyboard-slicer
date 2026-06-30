@@ -1,6 +1,6 @@
 ---
 name: video-storyboard-slicer
-description: Prepare video understanding context for GPT workflows from local videos or downloadable URLs. Use when Codex needs yt-dlp video download, adaptive timestamped storyboard sheets, ordered screenshots, manifests, Bilibili title/description/cover/comment metadata, local Whisper transcription with timestamped segments, text-driven focused region storyboard extraction around promising transcript/copy ranges, video summaries, highlight selection, thumbnail frame choice, UI recording review, a polished WeChat/public-account-ready HTML article page containing screenshots from the original video, or clean final packaging that removes engineering artifacts. Defaults adapt frame sampling and sheet layout to video duration.
+description: Prepare video understanding context for GPT workflows from local videos or downloadable URLs. Use when Codex needs yt-dlp video download, default 1 FPS timestamped storyboard sheets, ordered screenshots, manifests, Bilibili title/description/cover/comment metadata, local Whisper transcription with timestamped segments, text-driven focused region storyboard extraction around promising transcript/copy ranges, video summaries, highlight selection, thumbnail frame choice, UI recording review, a polished WeChat/public-account-ready HTML article page containing screenshots from the original video, or clean final packaging that removes engineering artifacts. Defaults sample video at 1 FPS and adapt sheet layout to video duration.
 ---
 
 # Video Storyboard Slicer
@@ -25,7 +25,7 @@ Generated outputs:
 - `metadata/cover.jpg`: downloaded Bilibili/yt-dlp cover when available
 - `storyboard/sheets/storyboard_###.jpg`: ordered frame grids with visible timestamps
 - `storyboard/frames/frame_*.jpg`: extracted original-video screenshots
-- `storyboard/manifest.json`: source metadata, adaptive config, timestamps, frame paths, and sheet coverage
+- `storyboard/manifest.json`: source metadata, 1 FPS/default sampling config, timestamps, frame paths, and sheet coverage
 - `transcript/`: local Whisper outputs, including `transcript_segments.json` when timestamped segments are available
 - `summary_context.json`: compact context for AI analysis and HTML generation
 - `visual_digest_prompt.md`: prompt for converting the first storyboard route into a visual understanding digest
@@ -75,16 +75,16 @@ python3 /path/to/video-storyboard-slicer/scripts/package_summary.py ./video-cont
 python3 /path/to/video-storyboard-slicer/scripts/package_summary.py ./video-context --apply
 ```
 
-By default, the scripts probe duration and automatically choose compact overview settings:
+By default, the scripts probe duration and create a 1 FPS visual index:
 
-- frame interval for reading the video
+- frame interval is 1 second unless explicitly overridden
 - thumbnail width
 - sheet columns
 - max frames per sheet
 - sheet time span
-- target total frames
+- expected total frames
 
-The default overview favors seeing more of the video at lower visual precision: for a one-hour video, the balanced target is about 800 frames, usually around 10 long-video storyboard sheets at 80 frames per sheet. Use this to understand rough visual flow before asking for high-resolution evidence.
+The default first route now favors full visual coverage over sparse sampling: a one-hour video produces about 3600 timestamped frames, usually around 46 long-video storyboard sheets at 80 frames per sheet. This makes the visual digest more comparable to native video-understanding systems while staying auditable: every frame sheet, timestamp, selected screenshot, and final article image is visible on disk.
 
 Use `--dry-run` to preview the adaptive configuration without writing frames:
 
@@ -106,11 +106,11 @@ Useful options:
 
 ## Adaptive Controls
 
-- Use `--density coarse` for long-video overviews or cheap first passes.
-- Use `--density balanced` for the default readable overview.
+- Use `--density coarse` for smaller thumbnails/layout choices on long videos, not to reduce default 1 FPS sampling.
+- Use `--density balanced` for the default readable 1 FPS overview.
 - Use `--density dense` for reactions, UI details, dance/motion, or candidate highlight ranges.
-- Use `--max-total-frames N` to cap adaptive frame count.
-- Override any adaptive value with `--interval`, `--cols`, `--max-frames-per-sheet`, `--segment-seconds`, or `--thumb-width`.
+- Use `--max-total-frames N` only when you intentionally want to cap below 1 FPS.
+- Override any value with `--interval`, `--cols`, `--max-frames-per-sheet`, `--segment-seconds`, or `--thumb-width`.
 
 Examples:
 
@@ -177,7 +177,7 @@ For text-driven focused extraction:
 
 1. Read `summary_context.json`, `visual_digest.md/json`, `transcript_segments_path`, comments, title, and description.
 2. Use `moment_selection_prompt.md` to write `candidate_moments.json` with start/end ranges, not only single timestamps. Expand ranges enough to cover the likely visual action.
-3. Run `extract_moment_frames.py` to sample each selected transcript/copy region into focused storyboard sheets. Defaults capture up to 36 compact frames per region with surrounding context; use `--interval`, `--frames-per-moment`, `--cols`, `--max-frames-per-sheet`, and `--thumb-width` to tune.
+3. Run `extract_moment_frames.py` to sample each selected transcript/copy region into focused storyboard sheets. Defaults sample focused regions at 1 FPS, capped at 240 frames per region with surrounding context; use `--interval`, `--frames-per-moment`, `--cols`, `--max-frames-per-sheet`, and `--thumb-width` to tune.
 4. Inspect `focused_frames/sheets/focused_frames_###.jpg` as mini storyboards, then inspect individual frames only for the best visual evidence.
 5. Use `focused_frames/final_frame_selection_prompt.md` to decide which regions and frames actually support the final summary.
 
@@ -205,8 +205,8 @@ Read `references/video-analysis.md` when the task needs more interpretation guid
 
 - Open the first and last sheet; confirm timestamps are readable and frame order is correct.
 - Confirm `visual_digest.md` or `visual_digest.json` exists before selecting candidate moments or packaging a final page.
-- Check `manifest.json` for `adaptive_config` so the sampling choice is explicit.
+- Check `manifest.json` for `adaptive_config` so the 1 FPS or intentionally capped sampling choice is explicit.
 - If details are unreadable, rerun with `--density dense`, larger `--thumb-width`, fewer columns, or a shorter source clip.
-- If too many sheets are produced, rerun with `--density coarse` or `--max-total-frames`.
+- If too many sheets are produced, intentionally downsample with `--max-total-frames` or `--interval`.
 - If the moment depends on audio, add transcript/subtitles before final conclusions.
 - Before packaging, run `scripts/check_article_html.py <output-dir>/summary.html`; if it fails, rewrite the page instead of delivering a dry workflow summary.

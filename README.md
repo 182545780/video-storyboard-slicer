@@ -17,12 +17,24 @@
 - 用 `yt-dlp` 下载视频 URL，支持 B 站常见链接。
 - 读取 B 站标题、简介、封面、基础数据和前几条评论，辅助 AI 理解语境。
 - 用本地 Whisper 生成带时间戳的转录文本。
-- 按视频时长自适应抽帧。当前默认策略下，一小时视频 balanced 模式约 800 帧，长视频拼图每张最多 80 帧。
+- 默认 1 FPS 逐秒抽帧。一小时视频约 3600 帧，长视频拼图每张最多 80 帧，形成可复查的视觉索引。
 - 将截图按时间顺序排成 storyboard sheet，并强制先写 `visual_digest.md/json`，让第一路视觉分析真正参与理解。
-- 根据视觉摘要和转录文案共同挑选可能有价值的时间段，再对这些区域做第二轮高密度拼图。
+- 根据视觉摘要和转录文案共同挑选可能有价值的时间段，再对这些区域做第二轮 1 FPS 重点拼图。
 - 生成 `summary.html` 草稿，并提示 AI 改成公众号文章式排版。
 - 用 `check_article_html.py` 拦截工程报告味的 HTML，避免把 dry summary 当成最终页面交付。
 - 最后用 `package_summary.py` 清理工程文件，只留下 `summary.html`、`assets/` 和可选长图；打包时会再次检查文章质量。
+
+## 为什么默认 1 FPS
+
+很多视频理解工具会把视频吃进模型，但中间过程不透明。这个项目的思路相反：先把视频变成每秒一帧的可审计视觉索引，再让 AI 基于这些真实截图、Whisper 转录和评论语境写总结。
+
+默认 1 FPS 的优势：
+
+- 不再靠稀疏抽样猜全片，普通一小时视频会保留约 3600 个可追溯时间点。
+- 每张图都有时间戳，后续文章里的截图可以回到原视频位置复查。
+- 对游戏、教程、剪辑、直播切片、UI 演示和快速换场更稳。
+- 视觉摘要必须先读完整个 storyboard，能防止 AI 只靠文案总结。
+- 最终交付仍然干净，只保留 HTML 和用到的图片，工程文件会被清理掉。
 
 ## 环境要求
 
@@ -86,7 +98,7 @@ python3 scripts/prepare_video_context.py ./input.mp4 --output ./video-context --
 python3 scripts/make_storyboard.py ./input.mp4 --output ./storyboard-out
 ```
 
-预览自适应抽帧配置：
+预览 1 FPS 抽帧配置：
 
 ```bash
 python3 scripts/make_storyboard.py ./input.mp4 --dry-run
@@ -98,7 +110,7 @@ python3 scripts/make_storyboard.py ./input.mp4 --dry-run
 
 1. 第一路看全片：先检查所有 `storyboard/sheets/storyboard_###.jpg`，写 `visual_digest.md` 或 `visual_digest.json`，总结画面类型、场景变化、视觉上值得截的时间点、重复段落和需要文案补充的地方。
 2. 第二路听全片：用 Whisper、标题、简介和评论理解视频在说什么。
-3. 第三路看重点：用视觉摘要和文案共同选择候选时间段，再跑 `extract_moment_frames.py` 做重点区域拼图。
+3. 第三路看重点：用视觉摘要和文案共同选择候选时间段，再跑 `extract_moment_frames.py` 做重点区域 1 FPS 拼图。
 
 第一轮处理结束后，先按 `visual_digest_prompt.md` 写视觉摘要：
 
@@ -192,6 +204,6 @@ python3 scripts/prepare_video_context.py ./input.mp4 --whisper-language zh
 - B 站视频有时需要 cookies，可用 `--cookies` 或 `--cookies-from-browser chrome`。
 - `audio.wav` 本身不是给 AI 直接理解的输入；真正有用的是 Whisper 生成的转录文本。
 - 如果画面细节不够清楚，调高 `--thumb-width` 或改用 `--density dense`。
-- 如果只想快速扫长视频，默认 800 帧策略通常足够先判断内容结构。
+- 如果只想快速扫长视频，可以用 `--max-total-frames` 或 `--interval` 主动降采样；默认策略会坚持 1 FPS。
 - 不要跳过第一路视觉摘要；它决定后续候选片段和最终截图是否真的看过全片。
 - 最终 HTML 不应该出现 `Source Screenshots`、`Storyboard Sheets`、`Transcript Excerpt`、`summary_context.json`、`manifest`、`frame_count` 等可见工程词；出现时先重写页面。

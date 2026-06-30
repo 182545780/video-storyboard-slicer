@@ -334,8 +334,7 @@ def timestamps_for_moment(
     else:
         interval = interval_override
         if interval is None:
-            raw_interval = span_duration / max(frames_per_moment - 1, 1)
-            interval = choose_nice_interval(max(0.25, raw_interval))
+            interval = 1.0
         values = evenly_select(build_region_timestamps(span_start, span_end, interval), frames_per_moment)
 
     clipped = []
@@ -400,12 +399,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("source", type=Path, help="summary_context.json or a local video path.")
     parser.add_argument("moments", type=Path, help="JSON file containing AI-selected moments.")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--frames-per-moment", type=int, default=36, help="Target/cap frame count for each selected transcript region.")
-    parser.add_argument("--interval", type=float, help="Override seconds between frames inside each selected transcript region.")
+    parser.add_argument("--frames-per-moment", type=int, default=240, help="Cap frame count for each selected transcript region. Default region sampling is 1 FPS.")
+    parser.add_argument("--interval", type=float, default=1.0, help="Seconds between frames inside each selected transcript region.")
     parser.add_argument("--context-seconds", type=float, default=5.0)
-    parser.add_argument("--thumb-width", type=int, default=340)
-    parser.add_argument("--cols", type=int, default=6)
-    parser.add_argument("--max-frames-per-sheet", type=int, default=72)
+    parser.add_argument("--thumb-width", type=int, default=300)
+    parser.add_argument("--cols", type=int, default=10)
+    parser.add_argument("--max-frames-per-sheet", type=int, default=80)
     parser.add_argument("--label-height", type=int, default=34)
     parser.add_argument("--no-update-context", action="store_true")
     return parser.parse_args()

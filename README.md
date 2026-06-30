@@ -171,4 +171,3 @@ python3 scripts/prepare_video_context.py ./input.mp4 --whisper-language zh
 - 如果画面细节不够清楚，调高 `--thumb-width` 或改用 `--density dense`。
 - 如果只想快速扫长视频，默认 800 帧策略通常足够先判断内容结构。
 - 最终 HTML 不应该出现 `Source Screenshots`、`Storyboard Sheets`、`Transcript Excerpt`、`summary_context.json`、`manifest`、`frame_count` 等可见工程词；出现时先重写页面。
-- 仓库暂未附带开源许可证；公开发布前请按你的用途选择 LICENSE，并确认示例截图的使用范围。
